@@ -41,138 +41,7 @@ Utilizamos Few-Shot Prompting com schema JSON explícito no system prompt, forç
 - **Cooldown inteligente:** Se nenhum evento dentro de 30km, pausa requisições por 15min
 - **Transparência:** Badges no Dashboard informam a origem (🤖 IA Real / 📊 Fallback Local)
 
-### 5. System Prompt e Configuração da LLM
-
-#### 5.1 System Prompt (freebuff.com.completion)
-
-```
-Você é o SentinelaGlobal, um analista de riscos de desastres naturais especializado em análise geoespacial multi-fonte.
-
-Analise os dados de monitoramento abaixo e retorne APENAS um JSON válido seguindo EXATAMENTE este schema:
-
-{
-  "resumo_executivo": "Uma frase curta com o nível de risco e recomendação principal. (STRING, uma linha)",
-  "analise_detalhada": "Contexto técnico mencionando as fontes e eventos. (STRING, pode ser vazia)",
-  "recomendacoes": ["Ação 1", "Ação 2"],
-  "tendencia": "aumentando" | "estabilizando" | "diminuindo",
-  "nivel_confianca": "alta" | "media" | "baixa"
-}
-
-IMPORTANTE:
-- resumo_executivo deve ser uma STRING de texto curto, NÃO um objeto.
-- recomendacoes deve ser um ARRAY de strings.
-- tendencia deve ser EXATAMENTE "aumentando", "estabilizando" ou "diminuindo".
-- nivel_confianca deve ser EXATAMENTE "alta", "media" ou "baixa".
-
-Exemplo de resposta CORRETA:
-{
-  "resumo_executivo": "Risco moderado (45%) com tempestade a 80 km. Monitore a situação.",
-  "analise_detalhada": "Tempestade severa detectada pelo INMET a 80 km de distância. Ventos de 90 km/h.",
-  "recomendacoes": ["Fique atento a boletins meteorológicos", "Evite áreas alagáveis"],
-  "tendencia": "aumentando",
-  "nivel_confianca": "media"
-}
-
-Cite fontes (USGS, GDACS, Cemaden, Open-Meteo, INMET, NASA FIRMS, EMSC, NOAA, Copernicus).
-Responda em português brasileiro.
-```
-
-#### 5.2 System Prompt (API Groq Direta — Fallback)
-
-```
-Você é o SentinelaGlobal, analista de riscos de desastres naturais.
-Retorne APENAS um JSON com campos:
-  resumo_executivo (string curta),
-  analise_detalhada (string),
-  recomendacoes (array strings),
-  tendencia (aumentando/estabilizando/diminuindo),
-  nivel_confianca (alta/media/baixa).
-
-IMPORTANTE: resumo_executivo DEVE ser string, NUNCA objeto.
-Cite fontes (USGS, GDACS, INMET, NOAA, Copernicus, NASA FIRMS).
-Responda em português brasileiro. Sem prefácio nem comentários.
-```
-
-#### 5.3 Template do User Prompt
-
-```
-Nível de risco geral: {risco_geral}% ({nivel_alerta})
-Fontes ativas: {fontes_ativas}
-
-Eventos detectados:
-- {tipo} (severidade {severidade}/5, {distancia_km}km, impacto {impacto}%, fonte: {fonte})
-[...]
-
-Condições meteorológicas locais:
-Temperatura: {temperatura}°C
-Precipitação atual: {precipitacao}mm
-Vento: {vento} km/h
-Probabilidade de chuva: {probabilidade_chuva}%
-```
-
-> Os dados de eventos e clima são inseridos **diretamente no prompt** (inline prompt context), não via tool calling. A LLM recebe tudo na mensagem do usuário e retorna um JSON estruturado.
-
-#### 5.4 Parâmetros da API
-
-| Parâmetro | freebuff.com.completion | API Groq Direta |
-|-----------|------------------------|-----------------|
-| **Modelo** | `groq-llama-3.3-70b-versatile` | `llama-3.3-70b-versatile` |
-| **Temperature** | `0.1` | `0.1` |
-| **Max Tokens** | `1000` | `1500` |
-| **response_format** | Padrão (texto) | `{ type: "json_object" }` |
-| **Endpoint** | (via VLY Integrations) | `https://api.groq.com/openai/v1/chat/completions` |
-
-> **Temperature 0.1** é propositalmente baixa para minimizar alucinações e garantir determinismo em situações de emergência.
-
-#### 5.5 Schema de Resposta (JSON)
-
-```json
-{
-  "resumo_executivo": "string — resumo de uma linha",
-  "analise_detalhada": "string — contexto técnico multi-fonte",
-  "recomendacoes": ["string", "string", ...],
-  "tendencia": "aumentando" | "estabilizando" | "diminuindo",
-  "nivel_confianca": "alta" | "media" | "baixa",
-  "modelo_utilizado": "Groq Llama 3 (freebuff.com)",
-  "fontes_analisadas": ["USGS", "INMET", ...]
-}
-```
-
-#### 5.6 Validação Flexível (PT/EN)
-
-O validador (`validarAnaliseLLM`) aceita os campos em **português** ou **inglês**:
-
-| Campo PT | Campo EN | Obrigatório |
-|----------|----------|-------------|
-| `resumo_executivo` | `executive_summary`, `resumo`, `summary` | ✅ Sim |
-| `analise_detalhada` | `detailed_analysis`, `analysis`, `analise` | ❌ Opcional |
-| `recomendacoes` | `recommendacoes`, `recommendations`, `recommends`, `acoes`, `actions` | ✅ Sim (aceita vazio) |
-| `tendencia` | `trend`, `tendency` | ✅ Sim (default: estabilizando) |
-| `nivel_confianca` | `confidence`, `confianca`, `confidence_level` | ✅ Sim (default: media) |
-
-> `tendencia` aceita variações semânticas: "aumentando" / "up" / "rising" / "aument" → `"aumentando"`. "diminuindo" / "down" / "falling" / "diminu" → `"diminuindo"`.
-
-#### 5.7 Sobre Tool Calling
-
-O SentinelaGlobal **não utiliza tool calling**. Em vez de a LLM chamar funções para buscar dados, os dados geoespaciais e meteorológicos são **pré-processados e inseridos diretamente no user prompt** como contexto. A LLM atua exclusivamente como **analista** — interpreta os dados que já recebeu e retorna uma análise estruturada em JSON.
-
-**Motivos da decisão:**
-- Menos latência (não há round-trips de tool calling)
-- Controle total sobre quais dados são enviados (já filtrados e calculados pelo `calcularRiscoLocal`)
-- Schema de resposta 100% controlado pelo validador (evita alucinações de tool call)
-- Fallback determinístico (`analisarLocal`) que não depende de LLM nenhuma
-
-#### 5.8 Cadeia de Tentativas (Circuit Breaker)
-
-```
-Tentativa 1: freebuff.com.completion()  ──→ Sucesso? ✅ Retorna
-       ↓ falha
-Tentativa 2: API Groq Direta             ──→ Sucesso? ✅ Retorna
-       ↓ falha
-Tentativa 3: Análise Local (fallback)    ──→ Sempre retorna (garantido)
-```
-
-### 6. Proxy Server-Side (CORS)
+### 5. Proxy Server-Side (CORS)
 
 Todas as APIs externas de monitoramento são consultadas **via Convex Action** (server-side), eliminando completamente os erros de CORS. O navegador só faz fetch direto como fallback para APIs que permitem CORS (USGS, Open-Meteo, NWS, OpenFEMA).
 
@@ -181,8 +50,8 @@ Todas as APIs externas de monitoramento são consultadas **via Convex Action** (
 ## 📋 Índice
 
 - [Funcionalidades](#-funcionalidades)
+- [guia de instalação](Instalação.md)
 - [Stack Tecnológica](#-stack-tecnológica)
-- [Arquitetura de Dados](#-arquitetura-de-dados)
 - [Fontes de Dados](#-fontes-de-dados)
 - [Páginas do Sistema](#-páginas-do-sistema)
 - [Como Usar](#-como-usar)
@@ -196,18 +65,28 @@ Todas as APIs externas de monitoramento são consultadas **via Convex Action** (
 
 ### 🔍 Monitoramento Contínuo
 - Análise automática com dados **REAIS** de múltiplas agências internacionais
-- Polling dinâmico: **2 minutos** em risco crítico (>80%), **10 minutos** em risco seguro
+- Polling dinâmico: **1 minuto** em risco crítico (>80%), **5 minutos** em risco seguro
 - Raio de busca ajustável de **5 km a 40.000 km**
 - Cálculo de risco baseado em severidade do evento × fator de distância
-- **Trava de processamento** — impede execuções concorrentes do polling
-- **Cooldown de 15min** — se nenhum evento dentro de 30km, pausa requisições automaticamente
-- **Botão "Forçar verificação"** — antecipa o cooldown e dispara nova análise
+
+<p align="center">
+  <img src="./asset/inicio.png" alt="Preview" style="width: 100%; border-radius: 8px;">
+</p>
 
 ### 🗺️ Mapa Interativo (Leaflet)
 - Mapa de localização com marcador do usuário
 - Círculo de raio de busca ao redor da posição do usuário
 - **Mapa Mundial** com todos os eventos globais filtrados por tipo de catástrofe
 - Marcadores coloridos por tipo e severidade do evento
+- Integração com OpenStreetMap
+
+<p align="center">
+  <img src="./asset/eventos.png" alt="evento" style="width: 100%; border-radius: 8px;">
+</p>
+
+<p align="center">
+  <img src="./asset/mundial.png" alt="evento" style="width: 100%; border-radius: 8px;">
+</p>
 
 ### 📊 Gráficos SVG (zero dependências externas)
 - **Gráfico de Tendência de Risco** — histórico horário com previsão para próximas 6h
@@ -215,10 +94,19 @@ Todas as APIs externas de monitoramento são consultadas **via Convex Action** (
 - **Histórico de Chuva 24h** — barras de precipitação das últimas 24 horas
 - Linha de alerta 80% com destaque visual
 
+<p align="center">
+  <img src="./asset/tendencia_previsoes.png" alt="previsoes" style="width: 100%; border-radius: 8px;">
+</p>
+
 ### 🌍 Notícias Globais por Catástrofe
-- Agrupamento por **16 tipos de catástrofe**
+- Agrupamento por **16 tipos de catástrofe**: terremoto, tsunami, vulcão, furacão, ciclone, tufão, queimada, incêndio, enchente, deslizamento, tempestade, tornado, seca, nevasca, onda de calor, monção
 - Cada categoria com expandir/recolher: **5 itens recolhido / 15 expandido**
+- Categorias sem eventos mostram *"Sem atividade registrada"*
 - Links diretos para fonte original (USGS, GDACS, NASA FIRMS)
+
+<p align="center">
+  <img src="./asset/noticias.png" alt="dicas" style="width: 100%; border-radius: 8px;">
+</p>
 
 ### 🤖 AI Insights (Análise com IA)
 - Resumo executivo do cenário de risco
@@ -226,12 +114,21 @@ Todas as APIs externas de monitoramento são consultadas **via Convex Action** (
 - Recomendações específicas baseadas no nível de risco
 - Tendência: aumentando 📈 / estabilizando 📊 / diminuindo 📉
 - Nível de confiança da análise (alta / média / baixa)
-- **Cadeia de 3 tentativas**: freebuff.com → Groq API → Fallback local
+- **Cadeia de tentativas**: freebuff.com.completion() → Groq API direta → Análise local simulada
+
+<p align="center">
+  <img src="./asset/analise.png" alt="Insights" style="width: 100%; border-radius: 8px;">
+</p>
 
 ### 🌧️ Alerta de Chuva (Classificação INMET)
-- Classificação oficial INMET: Fraca (0.1–5.0), Moderada (5.1–25.0), Forte (25.1–50.0), Severa (50.1–100.0), Extrema (>100.0) mm/h
+- Classificação oficial INMET: Fraca (0.1–5.0 mm/h), Moderada (5.1–25.0), Forte (25.1–50.0), Severa (50.1–100.0), Extrema (>100.0)
 - Classificação por código WMO (World Meteorological Organization)
+- Classificação combinada (intensidade + código WMO)
 - Fontes: INMET, Open-Meteo, OpenWeatherMap, WeatherAPI
+
+<p align="center">
+  <img src="./asset/historico.png" alt="Hist" style="width: 100%; border-radius: 8px;">
+</p>
 
 ### 🔔 Notificações Push
 - Notificações críticas quando risco > 80%
@@ -240,10 +137,11 @@ Todas as APIs externas de monitoramento são consultadas **via Convex Action** (
 - Ação "Ver mapa" na notificação
 - Badge com contador de novos alertas
 
+
 ### 🎯 Eventos Próximos
 - Lista detalhada com severidade, distância e impacto percentual
 - Análise gerada por IA para cada evento
-- Badges: fonte do dado, distância, impacto
+- Badges: fonte do dado, distância da localização, impacto
 - Cores por nível: verde (baixo), âmbar (moderado), laranja (alto), rosa (crítico)
 
 ### 📍 Geolocalização
@@ -261,7 +159,7 @@ Todas as APIs externas de monitoramento são consultadas **via Convex Action** (
 | **Roteamento** | React Router 7 |
 | **Estilos** | Tailwind CSS 4, shadcn/ui, Framer Motion |
 | **Mapas** | Leaflet + react-leaflet |
-| **Backend/Database** | Convex (realtime queries, actions, mutations) |
+| **Backend/Database** | Convex (realtime queries, mutations) |
 | **Autenticação** | Convex Auth (Google OAuth, anônimo) |
 | **IA/LLM** | freebuff.com.completion (Groq + Llama 3), API Groq direta, fallback local |
 | **Ícones** | Lucide React |
@@ -270,113 +168,91 @@ Todas as APIs externas de monitoramento são consultadas **via Convex Action** (
 
 ---
 
-## 🏗️ Arquitetura de Dados
-
-### Fluxo de Requisições (Proxy Server-Side)
-
-```
-Navegador (React)
-    │
-    ├── 1. Convex Action (proxyApi.ts) ← server-side, SEM CORS
-    │       │
-    │       ├── USGS (terremotos)
-    │       ├── GDACS (desastres globais)
-    │       ├── EMSC (terremotos Europa)
-    │       ├── USGS Volcano (vulcões)
-    │       ├── OpenFEMA (desastres EUA)
-    │       ├── Copernicus EMS (queimadas/enchentes Europa)
-    │       ├── NOAA NHC (furacões Atlântico)
-    │       ├── NASA FIRMS (queimadas mundo)
-    │       ├── Open-Meteo (clima)
-    │       ├── OpenWeatherMap (clima)
-    │       ├── WeatherAPI (clima)
-    │       ├── NWS Tsunami (alertas)
-    │       └── INMET (precipitação Brasil)
-    │
-    └── 2. Fetch direto (fallback) — APENAS APIs CORS-friendly
-            ├── USGS ✅
-            ├── OpenFEMA ✅
-            ├── NWS Tsunami ✅
-            ├── NASA FIRMS ✅ (com chave)
-            ├── Open-Meteo ✅
-            ├── OpenWeatherMap ✅ (com chave)
-            └── WeatherAPI ✅ (com chave)
-```
-
-### Por que proxy Convex?
-
-Todas as APIs de monitoramento (GDACS, NOAA NHC, Copernicus EMS, EMSC, USGS Volcano) **bloqueiam CORS** quando chamadas diretamente do navegador. Em vez de criar um backend separado, usamos uma **Convex Action** (`"use node"`) que faz as chamadas server-side — sem erros CORS, sem infraestrutura extra.
-
-### Limites Convex
-
-- **Array max 8192 itens** — todos os arrays retornados pela proxy action são limitados com `.slice(0, 500)`
-- APIs individuais já limitam na origem (ex: FIRMS 30 linhas, USGS 20 features)
-
-### Economia de Requisições (Cooldown)
-
-- Se após uma análise **nenhum evento estiver dentro de 30km** do usuário, o sistema entra em **cooldown de 15 minutos**
-- Durante o cooldown, **nenhuma requisição é feita** (nem polling)
-- O usuário pode clicar em **"Forçar verificação"** para antecipar
-- Se houver eventos próximos, o polling normal continua (2min crítico / 10min seguro)
-
----
-
 ## 🌐 Fontes de Dados
 
-O sistema consulta **13 fontes** de dados:
+O sistema consulta **13 fontes** de dados em paralelo:
 
-| Fonte | Dados | Chave | CORS (browser) |
-|-------|-------|-------|----------------|
-| [USGS](https://earthquake.usgs.gov) | Terremotos (magnitude ≥ 4.5, últimas 24h) | ❌ Gratuita | ✅ |
-| [GDACS](https://www.gdacs.org) | Desastres globais | ❌ Gratuita | ❌ (proxy) |
-| [EMSC](https://www.seismicportal.eu) | Terremotos (fallback europeu) | ❌ Gratuita | ❌ (proxy) |
-| [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov) | Queimadas ativas (VIIRS) | ✅ Requer chave | ✅ (com chave) |
-| [USGS Volcano](https://volcanoes.usgs.gov) | Alertas vulcânicos | ❌ Gratuita | ❌ (proxy) |
-| [NOAA NHC](https://www.nhc.noaa.gov) | Furacões (Atlântico) | ❌ Gratuita | ❌ (proxy) |
-| [Open-Meteo](https://open-meteo.com) | Meteorologia (temp., chuva, vento, previsão 6h, histórico 24h) | ❌ Gratuita | ✅ |
-| [NOAA NWS](https://www.weather.gov) | Alertas de tsunami | ❌ Gratuita | ✅ |
-| [OpenFEMA](https://www.fema.gov) | Desastres nos EUA | ❌ Gratuita | ✅ |
-| [Copernicus EMS](https://emergency.copernicus.eu) | Queimadas, enchentes (Europa/mundo) | ❌ Gratuita | ❌ (proxy) |
-| [INMET](https://apitempo.inmet.gov.br) | Estações meteorológicas (Brasil) | ❌ Gratuita | ✅ |
-| [OpenWeatherMap](https://openweathermap.org) | Meteorologia (fallback) | ✅ Requer chave | ✅ |
-| [WeatherAPI](https://www.weatherapi.com) | Meteorologia (fallback) | ✅ Requer chave | ✅ |
+| Fonte | Dados | Chave |
+|-------|-------|-------|
+| [USGS](https://earthquake.usgs.gov) | Terremotos (magnitude ≥ 4.5, últimas 24h) | ❌ Gratuita |
+| [GDACS](https://www.gdacs.org) | Desastres globais (ciclones, enchentes, vulcões, incêndios) | ❌ Gratuita |
+| [EMSC](https://www.seismicportal.eu) | Terremotos (fallback europeu) | ❌ Gratuita |
+| [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov) | Queimadas ativas (VIIRS, mundo todo) | ✅ Requer chave gratuita |
+| [USGS Volcano](https://volcanoes.usgs.gov) | Alertas vulcânicos | ❌ Gratuita |
+| [NOAA NHC](https://www.nhc.noaa.gov) | Furacões e tempestades tropicais (Atlântico) | ❌ Gratuita |
+| [Open-Meteo](https://open-meteo.com) | Meteorologia (temperatura, chuva, vento, previsão 6h, histórico 24h) | ❌ Gratuita |
+| [NOAA NWS](https://www.weather.gov) | Alertas de tsunami | ❌ Gratuita |
+| [OpenFEMA](https://www.fema.gov) | Desastres nos EUA (incêndios, furacões, enchentes) | ❌ Gratuita |
+| [Copernicus EMS](https://emergency.copernicus.eu) | Queimadas, enchentes e tempestades (Europa/mundo) | ❌ Gratuita |
+| [Cemaden](http://www.cemaden.gov.br) | Estações pluviométricas (Brasil - APAC PE) | ❌ Gratuita |
+| [INMET](https://apitempo.inmet.gov.br) | Estações meteorológicas automáticas (Brasil) | ❌ Gratuita |
+| [OpenWeatherMap](https://openweathermap.org) | Meteorologia (fallback) | ✅ Requer chave gratuita |
+| [WeatherAPI](https://www.weatherapi.com) | Meteorologia (fallback) | ✅ Requer chave gratuita |
+| [Nominatim (OSM)](https://nominatim.openstreetmap.org) | Reverse geocoding (nome do local por coordenadas) | ❌ Gratuita (com rate limit) |
 
-> ⚠️ **Nota:** Cemaden removido por mixed content (HTTP em página HTTPS). CORS-blocked APIs (GDACS, EMSC, USGS Volcano, Copernicus EMS, NOAA NHC) funcionam **apenas via proxy Convex** — não são chamadas do navegador.
+**Sistema de fallback em cadeia**: Se a fonte primária falha, a secundária é tentada automaticamente. Exemplo:
+- Terremotos: USGS → EMSC
+- Queimadas: NASA FIRMS → Copernicus EMS
+- Vulcões: USGS Volcano → GDACS
+- Precipitação: INMET → Open-Meteo → OpenWeatherMap → WeatherAPI
 
 ---
 
 ## 📄 Páginas do Sistema
 
 ### `/` — Landing Page
-Página inicial com hero, cards de funcionalidades, seção de fontes e CTAs.
+Página inicial com:
+- Hero com gradiente e call-to-action
+- 3 cards de funcionalidades (Monitoramento Contínuo, Mapa Interativo, Alertas Inteligentes)
+- Seção de fontes de dados confiáveis
+- Botões: "Iniciar monitoramento" e "Ver demonstração"
 
 ### `/dashboard` — SentinelaDashboard (Principal)
-Painel completo de monitoramento com:
-- Status do sistema, gráficos SVG, AI Insights, notícias globais, eventos próximos, mapas local e mundial
+Painel completo de monitoramento:
+- **Status do Sistema**: círculo de risco, nível de alerta, eventos próximos, raio de busca ajustável, localização, precipitação INMET, monitoramento, notificações push
+- **Tendência e Previsão de Risco**: gráfico SVG com histórico + previsão 6h
+- **Previsão de Chuva**: gráfico de barras SVG com probabilidade (próximas 6h)
+- **Histórico de Chuva 24h**: gráfico de barras SVG
+- **AI Insights**: análise completa com LLM (resumo, recomendações, tendência, confiança)
+- **Notícias Globais**: agrupadas por 16 tipos de catástrofe com expandir/recolher
+- **Eventos Próximos**: lista detalhada com análise e recomendações
+- **Mapa Local**: Leaflet com marcador do usuário e círculo de busca
+- **Mapa Mundial**: todos os eventos globais com filtro por tipo
 
 ### `/auth` — Autenticação
-Login com Google OAuth e entrada como convidado.
+- Login com Google OAuth
+- Entrada como convidado (anônimo)
 
 ### `/apoiar` — Apoie o Projeto
-Página de contribuição via PIX com QR Code.
+- Página de contribuição via PIX
+- QR Code dinâmico
+- Chave PIX (UUID) com botão copiar
+- Valores sugeridos: Café (R$5), Apoiador (R$10), Destaque (R$25), Impulsionar (R$50)
 
 ---
 
 ## 📖 Como Usar
 
 ### 1. Acessar o Sistema
-Abra o SentinelaGlobal no navegador. Clique em **"Iniciar monitoramento"**.
+Abra o SentinelaGlobal no navegador. Na landing page, clique em **"Iniciar monitoramento"**.
 
 ### 2. Permitir Localização
-Permita o acesso à localização para cálculo de riscos e mapas.
+O navegador solicitará permissão de localização. **Permita o acesso** para que o sistema possa:
+- Calcular riscos de eventos próximos
+- Mostrar sua posição no mapa
+- Exibir eventos dentro do raio de busca
 
 ### 3. Monitorar Riscos
-O sistema automaticamente busca dados das APIs via proxy Convex, calcula risco e gera análise com IA.
+O sistema automaticamente:
+- Busca dados de todas as APIs em paralelo
+- Calcula o risco com base em severidade × distância
+- Gera análise detalhada com IA
+- Mostra eventos, notícias e mapas
 
 ### 4. Configurar Alertas
-- Ajuste o **raio de busca** (5 km a 40.000 km)
-- Ative **notificações push**
-- Use **"Forçar verificação"** para antecipar o polling
+- Ajuste o **raio de busca** (5 km a 40.000 km) para controlar a área monitorada
+- Ative **notificações push** para receber alertas críticos
+- O polling automático ajusta a frequência: 1 min (crítico) / 5 min (seguro)
 
 ---
 
@@ -384,35 +260,34 @@ O sistema automaticamente busca dados das APIs via proxy Convex, calcula risco e
 
 ```
 src/
-├── components/ui/          # Componentes shadcn/ui
+├── components/ui/       # Componentes shadcn/ui reutilizáveis
 ├── convex/
-│   ├── auth/               # Provedores de autenticação
-│   ├── auth.config.ts      # Configuração de auth
-│   ├── auth.ts             # Convex Auth
-│   ├── http.ts             # HTTP endpoints
-│   ├── monitoramento.ts    # Queries e mutations de risco
-│   ├── proxyApi.ts         # ⬅️ Convex Action proxy (server-side, sem CORS)
-│   ├── schema.ts           # Schema do banco Convex
-│   └── users.ts            # Helper de usuário
+│   ├── auth/            # Provedores de autenticação
+│   ├── auth.config.ts   # Configuração de auth
+│   ├── auth.ts          # Convex Auth (Google + anônimo)
+│   ├── http.ts          # HTTP endpoints
+│   ├── monitoramento.ts # Queries e mutations de risco
+│   ├── schema.ts        # Schema do banco Convex
+│   └── users.ts         # Helper de usuário atual
 ├── hooks/
-│   ├── use-auth.ts         # Hook de autenticação
-│   └── use-mobile.ts       # Hook de detecção mobile
+│   ├── use-auth.ts      # Hook de autenticação
+│   └── use-mobile.ts    # Hook de detecção mobile
 ├── lib/
-│   ├── alerta-chuva.ts     # Classificação INMET
-│   ├── api-mundiais.ts     # ⬅️ Integração multi-camada (Convex → browser)
-│   ├── llm-service.ts      # ⬅️ LLM com schema flexível PT/EN
-│   ├── risco-local.ts      # Cálculo de risco
-│   ├── utils.ts            # Utilitários
+│   ├── alerta-chuva.ts  # Classificação INMET e alertas de chuva
+│   ├── api-mundiais.ts  # Integração com APIs de desastres (15+ fontes)
+│   ├── llm-service.ts   # Análise com LLM (freebuff → Groq → fallback)
+│   ├── risco-local.ts   # Cálculo de risco, previsão, análise
+│   ├── utils.ts         # Utilitários gerais
 │   └── vly-integrations.ts # Configuração VLY
 ├── pages/
-│   ├── Landing.tsx         # Página inicial
-│   ├── SentinelaDashboard.tsx  # Painel principal
-│   ├── Auth.tsx            # Login
-│   ├── Apoiar.tsx          # PIX
-│   └── NotFound.tsx        # 404
-├── index.css               # Estilos globais
-├── instrumentation.tsx     # Error boundary
-└── main.tsx                # Entry point + rotas
+│   ├── Landing.tsx      # Página inicial
+│   ├── SentinelaDashboard.tsx  # Painel principal (107 KB)
+│   ├── Auth.tsx         # Página de login
+│   ├── Apoiar.tsx       # Página de contribuição PIX
+│   └── NotFound.tsx     # Página 404
+├── index.css            # Estilos globais + Tailwind
+├── instrumentation.tsx  # Instrumentação
+└── main.tsx             # Entry point + rotas
 ```
 
 ---
@@ -421,40 +296,23 @@ src/
 
 | Variável | Descrição | Obrigatória |
 |----------|-----------|-------------|
-| `VITE_CONVEX_URL` | URL do deployment Convex (contém a proxy action) | ✅ Sim |
-| `OWM_KEY` | Chave OpenWeatherMap (no servidor, via aba Keys) | ❌ |
-| `WEATHERAPI_KEY` | Chave WeatherAPI (no servidor, via aba Keys) | ❌ |
-| `NASA_FIRMS_KEY` | Chave gratuita NASA FIRMS | ❌ |
-| `VITE_GROQ_API_KEY` | Chave Groq para LLM | ❌ |
-
-> 💡 As chaves `OWM_KEY`, `WEATHERAPI_KEY` e `NASA_FIRMS_KEY` são lidas pela Convex Action (server-side) via `process.env`. Configure-as na aba **Keys/API keys** do Freebuff.
-
----
-
-## 🐛 Correções Recentes
-
-| # | Problema | Solução |
-|---|----------|---------|
-| 1 | Convex array > 8192 itens | `.slice(0, 500)` em todos os arrays retornados |
-| 2 | CORS bloqueado (GDACS, NHC, Copernicus, etc.) | Proxy Convex server-side; CORS-blocked APIs removidas do fallback browser |
-| 3 | Weather.gov 400 (`&limit=5`) | Parâmetro removido (não suportado) |
-| 4 | INMET 404 (`/dados/{codigo}/{data}`) | Endpoint removido (mantido só `/estacao/`) |
-| 5 | Mixed Content Cemaden (HTTP em HTTPS) | Fetch HTTP removido |
-| 6 | Manifest (`logo.png` inexistente) | Alterado para `logo.svg` (arquivo existe) |
-| 7 | Loop de polling concorrente | Trava `processandoRef` com delay de 500ms |
-| 8 | Schema LLM rígido (só PT) | Validador flexível aceita PT + EN |
-| 9 | Prompts Groq sem schema explícito | Few-shot com JSON schema no system prompt |
+| `VITE_CONVEX_URL` | URL do deployment Convex | ✅ Sim |
+| `VITE_NASA_FIRMS_KEY` | Chave gratuita NASA FIRMS | ❌ (opcional, sem ela queimadas não carregam) |
+| `VITE_OWM_KEY` | Chave gratuita OpenWeatherMap | ❌ (fallback Open-Meteo) |
+| `VITE_WEATHERAPI_KEY` | Chave gratuita WeatherAPI | ❌ (fallback Open-Meteo) |
+| `VITE_GROQ_API_KEY` | Chave Groq para LLM | ❌ (fallback local) |
 
 ---
 
 ## 🤝 Contribuição
 
-Áreas que podem ser melhoradas:
+Contribuições são bem-vindas! Áreas que podem ser melhoradas:
 
-- **Histórico persistente**: salvar análises no Convex
-- **App mobile**: versão PWA
+- **Mais fontes de dados**: integração com agências da Ásia, África e Oceania
+- **Previsão estendida**: modelos de machine learning para previsão de risco
+- **App mobile**: versão PWA ou React Native
 - **Traduções**: suporte a mais idiomas
-- **Previsão estendida**: modelos de ML para previsão de risco
+- **Histórico persistente**: salvar análises no Convex para consulta posterior
 
 ---
 
