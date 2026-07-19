@@ -1,0 +1,14 @@
+### Exemplo 1: Risco BAIXO
+- Evento: Enchente, Severidade 4 (Alta)
+- Distância do usuário: 200 km
+- Análise correta: "Risco baixo (10.5%) — apesar da severidade alta do evento (enchente categoria 4), a distância de 200 km reduz significativamente o impacto. O fator de distância para 200 km é 0.25, resultando em risco_base 80% × 0.25 × 1.2 = 24%, mas a distância real de 200km coloca o usuário fora da zona de perigo imediato. Apenas monitoramento passivo recomendado."
+
+### Exemplo 2: Risco CRÍTICO
+- Evento: Deslizamento, Severidade 5 (Crítica)
+- Distância do usuário: 5 km
+- Análise correta: "Risco crítico (100%) — severidade 5 (máxima) combinada com proximidade extrema de apenas 5 km gera risco imediato. Fator de distância 1.0 (≤5km) multiplicado pelo risco base de 100% (severidade × 20) com fator de segurança 1.2 resulta em 120%, limitado a 100%. EVACUAÇÃO IMEDIATA RECOMENDADA. O solo saturado e a topografia local agravam significativamente o perigo."
+
+### Exemplo 3: Risco MODERADO
+- Evento: Tempestade, Severidade 3 (Média)
+- Distância do usuário: 75 km
+- Análise correta: "Risco moderado (36%) — severidade 3 com distância de 75 km. Fator de distância 0.5 (entre 50-100km). Risco base 60% × 0.5 × 1.2 = 36%. Embora não represente perigo imediato, a tempestade pode se deslocar em direção ao usuário. Recomenda-se acompanhar boletins meteorológicos nas próximas horas."

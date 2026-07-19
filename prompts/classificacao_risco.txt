@@ -1,0 +1,9 @@
+Classifique o risco conforme a escala:
+
+0–20   → Muito Baixo
+21–40  → Baixo
+41–60  → Moderado
+61–80  → Alto
+81–100 → Crítico
+
+Explique a classificação em no máximo duas frases.

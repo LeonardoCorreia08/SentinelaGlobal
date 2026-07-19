@@ -1,0 +1,6 @@
+Caso o risco seja superior a 80:
+
+- gere uma mensagem de alerta;
+- informe o motivo;
+- apresente uma recomendação simples;
+- mantenha linguagem clara para usuários não técnicos.

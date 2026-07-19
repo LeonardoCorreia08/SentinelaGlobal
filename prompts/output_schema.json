@@ -1,0 +1,17 @@
+{
+  "risco_geral_usuario": <número 0-100>,
+  "mensagem_alerta": "<texto>",
+  "nivel_alerta": "<baixo|moderado|alto|critico>",
+  "eventos_analisados": [
+    {
+      "id": "<id>",
+      "tipo": "<tipo>",
+      "severidade": <1-5>,
+      "distancia_km": <número>,
+      "impacto_percentual": <0-100>,
+      "analise_llm": "<explicação detalhada do cálculo>",
+      "recomendacao": "<ação recomendada>"
+    }
+  ]
+}
+"""

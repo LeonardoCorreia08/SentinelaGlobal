@@ -1,0 +1,12 @@
+Analise todos os eventos recebidos.
+
+Considere:
+
+- distância do usuário;
+- severidade do evento;
+- quantidade de eventos próximos;
+- tendência do cenário.
+
+Calcule um risco geral entre 0 e 100.
+
+Caso existam múltiplos eventos próximos, considere o impacto combinado.
