@@ -1,4 +1,4 @@
-# 🛰️ SentinelaGlobal
+# 🛰️ SentinelaGlobal - Clique aki --> [App](https://sentinelaglobal.freebuff.app/)
 
 **Sistema inteligente de monitoramento de riscos e desastres naturais em tempo real.**
 
@@ -9,54 +9,35 @@ O SentinelaGlobal analisa dados de agências internacionais de desastres (USGS, 
 ## 🧠 Engenharia de IA e Decisões Técnicas
 
 Esta seção detalha o processo de engenharia por trás da integração da IA.
+[Aqui](arquitetura.md)
 
-### 1. Arquitetura de LLM
+| Critério |Item 4|item 5|
+|----------|----------|----------|
+|Avaliação Intermediaria|[Documentação do Processo](./docs/doc_do_processo.md)|[Uso Efetivo do Agente de Codificação](./docs/doc_agente_codificação.md)|
 
-O sistema utiliza uma Pipeline de Inferência Baseada em Eventos:
 
-```
-Input (Dados Geoespaciais + Clima)
-  → [Cálculo Determinístico (Fator Risco)]
-    → [System Prompt com Few-Shot]
-      → [Groq API (Llama 3.3 70B)]
-        → [Validador de Schema Flexível (PT/EN)]
-          → [UI/Dashboard]
-```
+| Critério |----------|----------|
+|----------|----------|----------|
+|Avaliação Final|[avaliação final](./docs/avaliacaofinal.md)|[justificativa](justificativa.md)|
 
-### 2. Decisões de Engenharia
-
-- **Modelo:** Groq (Llama 3.3 70B). Justificativa: Latência ultrabaixa, essencial para alertas de desastres, aliada a reasoning de alto nível para interpretação de múltiplos datasets.
-- **Framework:** Chamadas diretas à API. Justificativa: Priorizamos performance e controle total do payload, evitando abstrações pesadas.
-- **Temperatura (0.1):** Minimiza alucinações e garante determinismo técnico em situações de emergência.
-
-### 3. Estratégia de Prompting
-
-Utilizamos Few-Shot Prompting com schema JSON explícito no system prompt, forçando o modelo a retornar campos específicos com valores exatos. O validador aceita tanto nomes em **PT** quanto **EN** (ex: `resumo_executivo` ou `executive_summary`, `recomendacoes` ou `recommendations`).
-
-### 4. Robustez e Resiliência (Circuit Breaker)
-
-- **Validação de Schema Flexível:** Validador manual que busca campos por múltiplos nomes (PT + EN) — `analise_detalhada` é opcional, `tendencia` aceita variações como "aumentando"/"up"/"rising"
-- **Cadeia de 3 tentativas:** `freebuff.com.completion()` → `API Groq direta` → `Análise Local` (fallback determinístico)
-- **Trava de processamento:** `processandoRef` impede execuções concorrentes do polling
-- **Cooldown inteligente:** Se nenhum evento dentro de 30km, pausa requisições por 15min
-- **Transparência:** Badges no Dashboard informam a origem (🤖 IA Real / 📊 Fallback Local)
-
-### 5. Proxy Server-Side (CORS)
-
-Todas as APIs externas de monitoramento são consultadas **via Convex Action** (server-side), eliminando completamente os erros de CORS. O navegador só faz fetch direto como fallback para APIs que permitem CORS (USGS, Open-Meteo, NWS, OpenFEMA).
-
+| Critério |----------|
+|----------|----------|
+|Apresentação|[Pitch](https://mega.nz/folder/BIdi1S6a#yC31D13gbUDL6_J5rR-c9A) 
+ 
 ---
 
 ## 📋 Índice
 
 - [Funcionalidades](#-funcionalidades)
-- [guia de instalação](Instalação.md)
+- [Arquitetura](arquitetura.md)
+- [Guia de instalação](Instalação.md)
 - [Stack Tecnológica](#-stack-tecnológica)
 - [Fontes de Dados](#-fontes-de-dados)
 - [Páginas do Sistema](#-páginas-do-sistema)
 - [Como Usar](#-como-usar)
 - [Estrutura do Projeto](#-estrutura-do-projeto)
 - [Contribuição](#-contribuição)
+- [justificativa](justificativa.md)
 - [Licença](#-licença)
 
 ---
@@ -117,7 +98,7 @@ Todas as APIs externas de monitoramento são consultadas **via Convex Action** (
 - **Cadeia de tentativas**: freebuff.com.completion() → Groq API direta → Análise local simulada
 
 <p align="center">
-  <img src="./asset/analise.png" alt="Insights" style="width: 100%; border-radius: 8px;">
+  <img src="./asset/com_ia.png" alt="Insights" style="width: 100%; border-radius: 8px;">
 </p>
 
 ### 🌧️ Alerta de Chuva (Classificação INMET)
