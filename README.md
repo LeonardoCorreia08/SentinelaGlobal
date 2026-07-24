@@ -18,7 +18,7 @@ Esta seção detalha o processo de engenharia por trás da integração da IA.
 
 | Critério |----------|----------|
 |----------|----------|----------|
-|Avaliação Final|[avaliação final](./docs/avaliacaofinal.md)|[justificativa](justificativa.md)|
+|Avaliação Final|[avaliação final](./docs/avaliacaofinal.md)|[justificativa](./docs/justificativa.md)|
 
 | Critério |----------|
 |----------|----------|
